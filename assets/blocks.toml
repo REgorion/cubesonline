@@ -1,0 +1,14 @@
+blocks = [
+{
+    name = "air",
+         is_opaque=false,
+         is_solid=false,
+         texture_indexes = [0, 0, 0, 0, 0 ,0],
+},
+{
+    name = "grass",
+        is_opaque = 1,
+        is_solid = 1,
+        texture_indexes = [0, 0, 0, 0, 0 ,0],
+}
+]
