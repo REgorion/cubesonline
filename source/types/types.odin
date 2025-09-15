@@ -2,6 +2,7 @@ package types
 
 import "core:time"
 import "core:log"
+import math "core:math"
 
 // TYPES
 float3 :: [3]f32
@@ -22,6 +23,29 @@ mod :: proc(a, b: i32) -> i32 {
     return m
 }
 
+mod_f32 :: proc(a, b: f32) -> f32 {
+    m := math.mod_f32(a, b)
+    if m < 0 {
+        m += b
+    }
+    return m
+}
+
+double3_to_float3 :: #force_inline proc(a: double3) -> float3 {
+    return {
+        f32(a.x),
+        f32(a.y),
+        f32(a.z),
+    }
+}
+
+float3_to_double3 :: #force_inline proc(a: float3) -> double3 {
+    return {
+        f64(a.x),
+        f64(a.y),
+        f64(a.z),
+    }
+}
 
 start_stopwatch :: proc(index: i32) {
     time.stopwatch_start(&stopwatch[index])

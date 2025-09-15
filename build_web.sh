@@ -20,9 +20,9 @@ export EMSDK_QUIET=1
 # up in env.o
 #
 # Note that there is a rayGUI equivalent: -define:RAYGUI_WASM_LIB=env.o
-../../Odin/odin build source/main_web -target:js_wasm32 -build-mode:obj -define:RAYLIB_WASM_LIB=env.o -define:RAYGUI_WASM_LIB=env.o -out:$OUT_DIR/game.o
+../Odin/odin build source/main_web -target:js_wasm32 -build-mode:obj -define:RAYLIB_WASM_LIB=env.o -define:RAYGUI_WASM_LIB=env.o -out:$OUT_DIR/game.o
 
-ODIN_PATH=$(../../Odin/odin root)
+ODIN_PATH=$(../Odin/odin root)
 
 cp $ODIN_PATH/core/sys/wasm/js/odin.js $OUT_DIR
 

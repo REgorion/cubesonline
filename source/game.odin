@@ -1,30 +1,3 @@
-/*
-This file is the starting point of your game.
-
-Some important procedures are:
-- game_init_window: Opens the window
-- game_init: Sets up the game state
-- game_update: Run once per frame
-- game_should_close: For stopping your game when close button is pressed
-- game_shutdown: Shuts down game and frees memory
-- game_shutdown_window: Closes window
-
-The procs above are used regardless if you compile using the `build_release`
-script or the `build_hot_reload` script. However, in the hot reload case, the
-contents of this file is compiled as part of `build/hot_reload/game.dll` (or
-.dylib/.so on mac/linux). In the hot reload cases some other procedures are
-also used in order to facilitate the hot reload functionality:
-
-- game_memory: Run just before a hot reload. That way game_hot_reload.exe has a
-	pointer to the game's memory that it can hand to the new game DLL.
-- game_hot_reloaded: Run after a hot reload so that the `g` global
-	variable can be set to whatever pointer it was in the old DLL.
-
-NOTE: When compiled as part of `build_release`, `build_debug` or `build_web`
-then this whole package is just treated as a normal Odin package. No DLL is
-created.
-*/
-
 package game
 
 import rl "vendor:raylib"
@@ -40,16 +13,19 @@ import "core:fmt"
 import "core:time"
 import q "core:container/queue"
 import "entity"
+import "physics"
 
 Arena :: mem.Arena
 
 GameState :: struct {
-	isWireframeRendering : bool,
-	doRaycast : bool,
+	isWireframeRendering: bool,
+	doRaycast: bool,
+	lockCursor: bool,
+	prevLockCursor: bool,
 }
 
 Input :: struct {
-	axis : [3]f32,
+	axis : [2]f32,
 	jump : bool,
 	run : bool,
 }
@@ -58,6 +34,7 @@ data : [256 * mem.Megabyte]byte
 arena : Arena
 
 camera : rl.Camera3D
+overlay_camera : rl.Camera3D
 
 input : Input
 sunDirectionLocation : i32
@@ -68,12 +45,18 @@ texture: rl.Texture2D
 
 version: cstring
 
+player : Player
 world : w.World
 stopwatch: time.Stopwatch
 
+Player :: struct {
+	using entity: entity.Entity,
+	using aabb: physics.AABB,
+}
+
 start :: proc()
 {
-	camera.position = {3, 3, 3}
+	camera.position = {0, 0, 0}
 	camera.target = {0, 0, 0}
 	camera.up = {0, 1, 0}
 	camera.fovy = 80
@@ -100,16 +83,14 @@ start :: proc()
 	rl.SetShaderValue(shader, rl.GetShaderLocation(shader, "atlasSize"), &atlasSize, rl.ShaderUniformDataType.FLOAT)
 	rl.SetShaderValueTexture(shader, rl.GetShaderLocation(shader, "texture0"), texture)
 
-	rl.DisableCursor()
-
 	world.draw_distance = 3
+	player.extents = t.float3{0.3, 0.9, 0.3}
 	log.logf(.Info, "Mod: %v", t.mod(-1, 16))
 }
 
-camera_rot : [3]f32
-camera_velocity : [3]f32
+camera_rot : [2]f32
 camera_rot_speed : f32 = 25.0
-camera_speed : f32 = 10.0
+camera_speed : f32 = 4.5
 
 _time : f32
 accumulator : f32
@@ -145,23 +126,48 @@ update :: proc() {
 	
 	frametimes_pos = (frametimes_pos + 1) % len(frametimes)
 
-	camera_rot.x = rl.GetMouseDelta().x * camera_rot_speed * dt
-	camera_rot.y = rl.GetMouseDelta().y * camera_rot_speed * dt
-
-	camera_velocity = input.axis * dt * camera_speed
-	if input.run {
-		camera_velocity -= {0, 0, camera_speed * dt}
-
+	if state.lockCursor {
+		camera_rot.x -= rl.GetMouseDelta().x * camera_rot_speed * dt
+		camera_rot.y -= rl.GetMouseDelta().y * camera_rot_speed * dt
+		
+		if camera_rot.x > 180 {
+			diff := camera_rot.x - 180.0
+			camera_rot.x = -180 + diff
+		}
+		else if camera_rot.x < -180
+		{
+			diff := camera_rot.x + 180.0
+			camera_rot.x = 180 - diff
+		}
+		
+		camera_rot.y = math.clamp(camera_rot.y, -90.0, 90.0)
 	}
-	else if input.jump {
-		camera_velocity += {0, 0, camera_speed * dt}
-	}
+
+	// TODO: proper convert from infinte world f64 coord to rendering f32
+	camera.position = t.double3_to_float3(player.prev_position + (player.position - player.prev_position) * f64(partial_tick)) 
 	
-	cam_pos := camera.position.xz / f32(w.SECTION_SIZE)
-	world.center = t.int2{i32(cam_pos.x), i32(cam_pos.y)}
+	// Camera rotation
+	// ------------------
+	yaw := math.to_radians_f32(camera_rot.x)
+	pitch := math.to_radians_f32(camera_rot.y)
 
-	rl.UpdateCameraPro(&camera, camera_velocity, camera_rot, 0)
+	pitch_cos := math.cos_f32(pitch)
+	pitch_sin := math.sin_f32(pitch)
+	yaw_sin := math.sin_f32(yaw)
+	yaw_cos := math.cos_f32(yaw)
 
+	camera.target = {
+		pitch_cos * yaw_sin,
+		pitch_sin,
+		pitch_cos * yaw_cos
+	} + camera.position
+	// ------------------
+	
+	player_pos := player.position.xz / f64(w.SECTION_SIZE)
+	world.center = t.int2{i32(player_pos.x), i32(player_pos.y)}
+	
+	rl.UpdateCamera(&camera, rl.CameraMode.CUSTOM)
+	
 	if currently_updating != -1 {
 
 		chunk := w.all_chunks[currently_updating]
@@ -201,11 +207,37 @@ update :: proc() {
 			
 		}
 	}
+	
+	if rl.IsKeyPressed(.ESCAPE) {
+		state.lockCursor = !state.lockCursor
+	}
+	
+	if state.prevLockCursor != state.lockCursor {
+		if state.lockCursor {
+			rl.DisableCursor()
+		} else {
+			rl.EnableCursor()
+		}
+	}
+	
+	state.prevLockCursor = state.lockCursor
+	
+	if state.lockCursor {
+		rl.SetMousePosition(rl.GetRenderWidth() / 2, rl.GetRenderHeight() / 2)
+	}
 }
 
 currently_updating : i32 = -1
 last_updated_sector: i32 = -1
 tick_n: i32 = 0
+
+TestCollision :: struct {
+	collide: bool,
+	time: f32,
+	normal: t.float3
+}
+
+tc : TestCollision
 
 tick :: proc()
 {
@@ -229,6 +261,51 @@ tick :: proc()
 		
 		currently_updating = i32(chunk_id)
 	}
+
+	// Player Update
+	forward := camera.target - camera.position
+	forward.y = 0
+	forward = linalg.vector_normalize0(forward)
+	strafe := linalg.vector_normalize0(linalg.cross(t.float3{0, 1, 0}, forward))
+
+	forward *= input.axis.y
+	strafe *= -input.axis.x
+
+	player.velocity = {
+		forward.x + strafe.x,
+		0,
+		forward.z + strafe.z
+	}
+	if input.run {
+		player.velocity += {0, -1, 0}
+	}
+	else if input.jump {
+		player.velocity += {0, 1, 0}
+	}
+
+	player.velocity *= camera_speed
+	
+	
+	tc.collide, tc.time, tc.normal = physics.get_swept(player.velocity * TICK_TIME, player.position, {0.0,0.0,0.0}, player.aabb, physics.AABB{
+		center = {0.0, 15.0, 0.0},
+		extents = {5.0, 0.5, 0.5},
+	})
+
+	player.prev_position = player.position
+	
+	if tc.collide {
+		move := player.velocity * TICK_TIME * tc.time
+		player.position += t.float3_to_double3(move + tc.normal * 0.001)
+		
+		remaining := player.velocity * TICK_TIME * (1.0 - tc.time)
+		dot := linalg.vector_dot(tc.normal, remaining)
+		slide := remaining - tc.normal * dot
+		
+		player.position += t.float3_to_double3(slide)
+	} else {
+		player.position += t.float3_to_double3(player.velocity * TICK_TIME)
+	}
+	
 }
 
 draw :: proc() {
@@ -237,7 +314,7 @@ draw :: proc() {
 	width := rl.GetRenderWidth()
 	height := rl.GetRenderHeight()
 
-	rl.ClearBackground(rl.WHITE)
+	rl.ClearBackground({120, 180, 255, 255})
 	rl.BeginMode3D(camera)
 
 	x := math.cos_f32(_time) * 5.0
@@ -266,6 +343,9 @@ draw :: proc() {
 			rl.DrawModel(section.model, fpos, 1, rl.WHITE)
 		}
 	}
+	
+	rl.DrawCubeWires(t.double3_to_float3(player.position), player.extents.x, player.extents.y, player.extents.z, rl.GREEN)
+	rl.DrawCube(t.float3{0, 15, 0}, 10, 1, 1, rl.RED)
 
 	rl.EndMode3D()
 	rl.DrawFPS(10, 10)
@@ -323,9 +403,13 @@ draw :: proc() {
 	rl.DrawLineV(t.float2{10, y60fps}, t.float2{10 + line_width, y60fps}, rl.BLACK)
 	rl.DrawLineV(t.float2{10, y30fps}, t.float2{10 + line_width, y30fps}, rl.BLACK)
 	rl.DrawLineV(t.float2{10, y15fps}, t.float2{10 + line_width, y15fps}, rl.BLACK)
+
+	rl.DrawText(fmt.ctprintf("x: %v\ny: %v\nz: %v", camera.position.x, camera.position.y, camera.position.z), width - 100, 28, 18, rl.BLACK)
+	rl.DrawText(fmt.ctprintf("x: %v", tc), 500, 500, 18, rl.BLACK)
 	
 	// version
-	rl.DrawText(version, 10, height - 26, 16, rl.BLACK)
+	rl.DrawText(version, 10, height - 28, 18, rl.BLACK)
+
 
 	rl.EndDrawing()
 }
@@ -334,23 +418,23 @@ update_input :: proc() {
 	using input
 	{
 		if rl.IsKeyDown(.W){
-			axis.x = 1
+			axis.y = 1
 		}
 		else if rl.IsKeyDown(.S){
-			axis.x = -1
-		}
-		else {
-			axis.x = 0
-		}
-
-		if rl.IsKeyDown(.A){
 			axis.y = -1
-		}
-		else if rl.IsKeyDown(.D){
-			axis.y = 1
 		}
 		else {
 			axis.y = 0
+		}
+
+		if rl.IsKeyDown(.A){
+			axis.x = -1
+		}
+		else if rl.IsKeyDown(.D){
+			axis.x = 1
+		}
+		else {
+			axis.x = 0
 		}
 
 		jump = rl.IsKeyDown(.SPACE)
