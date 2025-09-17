@@ -328,10 +328,7 @@ update_active_chunks :: proc(world: ^World, allocator: runtime.Allocator) {
                 section.blocks[block_index] = 0
             }
             else {
-                h : i32 = i32(math.sin_f32(f32(glob_coord.x) / 16) * 4 + math.cos_f32(f32(glob_coord.z) / 16) * 4) + 8
-                if glob_coord.y <= h {
-                    section.blocks[block_index] = 1
-                }
+                section.blocks[block_index] = 1
             }
         }
         new_chunks[new_index] = chunk.id

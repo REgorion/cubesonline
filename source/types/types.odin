@@ -4,6 +4,10 @@ import "core:time"
 import "core:log"
 import math "core:math"
 
+// CONSTANTS
+TICKRATE :: 20
+TICK_TIME : f32 : 1.0 / f32(TICKRATE)
+
 // TYPES
 float3 :: [3]f32
 float2 :: [2]f32
@@ -40,6 +44,22 @@ double3_to_float3 :: #force_inline proc(a: double3) -> float3 {
 }
 
 float3_to_double3 :: #force_inline proc(a: float3) -> double3 {
+    return {
+        f64(a.x),
+        f64(a.y),
+        f64(a.z),
+    }
+}
+
+int3_to_float3 :: #force_inline proc(a: int3) -> float3 {
+    return {
+        f32(a.x),
+        f32(a.y),
+        f32(a.z),
+    }
+}
+
+int3_to_double3 :: #force_inline proc(a: int3) -> double3 {
     return {
         f64(a.x),
         f64(a.y),
