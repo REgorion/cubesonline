@@ -15,7 +15,7 @@ import "base:runtime"
 import q "core:container/queue"
 import "entity"
 import "physics"
-import "ws"
+import ws "ws_client"
 
 Arena :: mem.Arena
 
@@ -92,8 +92,7 @@ on_close :: proc "c" () {
 
 on_message :: proc "c" (str: cstring, len: i32) {
 	context = custom_context
-	log.logf(.Info, "On message: %v", str)
-	log.log(.Info, "After message")
+	log.logf(.Info, "Server says: %v", str)
 	do_poll = false
 }
 
@@ -113,7 +112,7 @@ start :: proc()
 	cb.on_error = on_error
 	cb.on_close = on_close
 	
-	ws_client = ws.ws_connect("wss://echo.websocket.org", cb)
+	ws_client = ws.ws_connect("ws://127.0.0.1:1227", cb)
 	
 	camera.position = {0, 0, 0}
 	camera.target = {0, 0, 0}
@@ -153,7 +152,7 @@ start :: proc()
 }
 
 tick :: proc() {
-	if tick_n == 100 {
+	if tick_n % 100 == 0 {
 		message : cstring = "Hello from Odin!"
 		ws.ws_send(ws_client, message, i32(len(message)))
 	}

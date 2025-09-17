@@ -3,6 +3,7 @@
   <component name="UserContentModel">
     <attachedFolders>
       <Path>../Odin</Path>
+      <Path>../ws-client</Path>
     </attachedFolders>
     <explicitIncludes />
     <explicitExcludes />

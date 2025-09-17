@@ -1,0 +1,2 @@
+#!/bin/bash
+gcc -c ws_server_wrapper.c -o ws_server_wrapper.o $(pkg-config --cflags libwebsockets)
