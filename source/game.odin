@@ -15,7 +15,8 @@ import "base:runtime"
 import q "core:container/queue"
 import "entity"
 import "physics"
-import ws "ws_client"
+//import ws "ws_client"
+import ws "ws_client_web"
 
 Arena :: mem.Arena
 
@@ -74,9 +75,7 @@ Player :: struct {
 	last_jump_tick: i64,
 }
 
-cb : ws.ws_callbacks
-ws_client : ^ws.ws_client
-do_poll := true
+//ws_client : ^ws.ws_client
 
 custom_context : runtime.Context
 
@@ -90,22 +89,39 @@ on_close :: proc "c" () {
 	log.log(.Info, "Connection closed")
 }
 
-on_message :: proc "c" (str: cstring, len: i32) {
+on_message :: proc "c" (data: [^]u8, len: i32) {
 	context = custom_context
-	log.logf(.Info, "Server says: %v", str)
-	do_poll = false
+	log.logf(.Info, "Server says: %X", data[0:len])
 }
 
-on_error :: proc "c" (str: cstring) {
+on_error :: proc "c" () {
 	context = custom_context
-	log.logf(.Info, "On error: %v", str)
-	do_poll = false
-	ws.ws_close(ws_client)
+	log.logf(.Info, "On error")
+	//ws.ws_close(ws_client)
 }
+
+cb : ws.ws_callbacks
+on_message_buffer : [4096]u8
+on_error_buffer : [4096]u8
 
 start :: proc()
 {
 	custom_context = context
+
+	cb = {
+		on_open = on_open,
+		on_close = on_close,
+		on_message = on_message,
+		on_error = on_error,
+	}
+	url :cstring= "wss://echo.websocket.org"
+	ws.ws_connect(url, i32(len(url)),
+		cb, 
+		transmute([^]u8)&on_message_buffer, i32(len(on_message_buffer)),
+		transmute([^]u8)&on_error_buffer, i32(len(on_error_buffer))
+	)
+	
+	/*
 	log.log(.Info, "Trying to connect to the server...")
 	cb.on_open = on_open
 	cb.on_message = on_message
@@ -113,6 +129,7 @@ start :: proc()
 	cb.on_close = on_close
 	
 	ws_client = ws.ws_connect("ws://127.0.0.1:1227", cb)
+	*/
 	
 	camera.position = {0, 0, 0}
 	camera.target = {0, 0, 0}
@@ -152,10 +169,14 @@ start :: proc()
 }
 
 tick :: proc() {
+	/*
 	if tick_n % 100 == 0 {
 		message : cstring = "Hello from Odin!"
-		ws.ws_send(ws_client, message, i32(len(message)))
+		bytes := transmute([^]u8)message
+		ws.ws_send(ws_client, bytes, i32(len(message)))
+		log.logf(.Info, "Sent %X", bytes[0:len(message)])
 	}
+	*/
 	
 	delete(physics.broadphase)
 	delete(physics.block_overlaps)

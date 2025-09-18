@@ -29,6 +29,7 @@
 <body>
 	<canvas class="game_canvas" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1" onmousedown="event.target.focus()" onkeydown="event.preventDefault()"></canvas>
 	<script type="text/javascript" src="odin.js"></script>
+	<script type="text/javascript" src="ws_client.js"></script>
 	<script>
 		var odinMemoryInterface = new odin.WasmMemoryInterface();
 		odinMemoryInterface.setIntSize(4);
@@ -40,7 +41,12 @@
 			instantiateWasm: (imports, successCallback) => {
 				const newImports = {
 					...odinImports,
-					...imports
+					...imports,
+					ws_client: {
+						ws_connect,
+						ws_send,
+						ws_close
+					}
 				}
 
 				return WebAssembly.instantiateStreaming(fetch("index.wasm"), newImports).then(function(output) {
@@ -110,7 +116,6 @@
 
 		
 	</script>
-
 	<!-- Emscripten injects its javascript here -->
 	{{{ SCRIPT }}}
 </body>

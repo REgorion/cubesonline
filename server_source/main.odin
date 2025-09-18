@@ -35,8 +35,8 @@ on_close :: proc "c" (conn: ^ws.ws_client_conn) {
     fmt.println("Close")
 }
 
-on_message :: proc "c" (conn: ^ws.ws_client_conn, data: cstring, len: i32) {
+on_message :: proc "c" (conn: ^ws.ws_client_conn, data: [^]u8, len: i32) {
     context = custom_context
-    fmt.printfln("Got new message: %v", data)
+    fmt.printfln("Got new message: %X", data[0:len])
     ws.ws_server_send(conn, data, len)
 }

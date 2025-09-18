@@ -32,19 +32,13 @@ Byte=1
 Kilobyte=$((1024 * Byte))
 Megabyte=$((1024 * Kilobyte))
 
-STACK=$((64 * Megabyte))
+STACK=$((32 * Megabyte))
 HEAP=$((600 * Megabyte))
 
 # index_template.html contains the javascript code that calls the procedures in
 # source/main_web/main_web.odin
-flags="-sUSE_GLFW=3 \
--sSTACK_SIZE=$STACK \
--sTOTAL_MEMORY=$HEAP \
--sWASM_BIGINT \
--sWARN_ON_UNDEFINED_SYMBOLS=0 \
--sMIN_WEBGL_VERSION=2 \
---shell-file source/main_web/index_template.html --preload-file assets"
-
+cp "source/main_web/ws_client.js" $OUT_DIR
+flags=" -sTOTAL_MEMORY=$HEAP -sSTACK_SIZE=$STACK -sWASM_BIGINT -sWARN_ON_UNDEFINED_SYMBOLS=0 -sMIN_WEBGL_VERSION=2 -sUSE_GLFW=3 --shell-file source/main_web/index_template.html --preload-file assets" 
 # For debugging: Add `-g` to `emcc` (gives better error callstack in chrome)
 emsdk/upstream/emscripten/emcc -o $OUT_DIR/index.html $files $flags
 

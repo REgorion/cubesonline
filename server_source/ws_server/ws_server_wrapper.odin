@@ -15,7 +15,7 @@ foreign import lib {
 }
 
 ws_on_client_open :: proc "c" (^ws_client_conn)
-ws_on_client_message :: proc "c" (^ws_client_conn, cstring, c.int)
+ws_on_client_message :: proc "c" (^ws_client_conn, [^]u8, c.int)
 ws_on_client_close :: proc "c" (^ws_client_conn)
 
 ws_server_callbacks :: struct {
@@ -32,13 +32,13 @@ ws_server :: struct {
 ws_client_conn :: struct {
 	wsi: rawptr,
 	ws_server: ^ws_server,
-	send_buf: [^]c.char,
+	send_buf: [^]u8,
 	send_len: c.int,
 }
 
 @(default_calling_convention="c", link_prefix="")
 foreign lib {
 	ws_server_start :: proc(port: i32, cb: ws_server_callbacks) -> ^ws_server ---
-	ws_server_send  :: proc(conn: ^ws_client_conn, data: cstring, len: c.int) ---
+	ws_server_send  :: proc(conn: ^ws_client_conn, data: [^]u8, len: c.int) ---
 	ws_server_stop  :: proc(server: ^ws_server) ---
 }
