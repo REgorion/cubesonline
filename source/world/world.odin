@@ -138,8 +138,19 @@ get_chunk_by_coord :: proc(world: ^World, coord: t.int2) -> (ok: bool, id: chunk
     return
 }
 
+// ===== Global coordinated
+is_coord_in_bounds :: proc(world: ^World, coord: t.int3) -> bool {
+    if coord.y >= WORLD_HEIGHT * SECTION_SIZE || coord.y < 0 {
+        return false
+    }
+    
+    chunk_coord := (coord / SECTION_SIZE).xz
+    
+    return is_chunk_in_bounds(world, chunk_coord)
+}
+
 // ===== Get/set blocks in world
-get_block :: proc(world: ^World, coord: t.int3, dbg: bool = false) -> u16 {
+get_block :: proc(world: ^World, coord: t.int3) -> u16 {
     if coord.y >= WORLD_HEIGHT * SECTION_SIZE || coord.y < 0
     {
         return 0
@@ -157,10 +168,6 @@ get_block :: proc(world: ^World, coord: t.int3, dbg: bool = false) -> u16 {
     //(coord / SECTION_SIZE).xz
 
     ok, chunk_id := get_chunk_by_coord(world, chunk_coord)
-    if dbg
-    {
-        log.logf(.Info, "Is ok %v, chunk id %v", ok, chunk_id)
-    }
     if !ok
     {
         return 0
@@ -182,6 +189,70 @@ get_block :: proc(world: ^World, coord: t.int3, dbg: bool = false) -> u16 {
     }
 
     return blocks[block_index]
+}
+
+set_block :: proc(world: ^World, coord: t.int3, block_id: u16) -> bool {
+    if coord.y >= WORLD_HEIGHT * SECTION_SIZE || coord.y < 0
+    {
+        return false
+    }
+
+    xf := f32(coord.x) / f32(SECTION_SIZE)
+    yf := f32(coord.z) / f32(SECTION_SIZE)
+
+    x : i32
+    y : i32
+
+    x = i32(math.floor_f32(xf))
+    y = i32(math.floor_f32(yf))
+    chunk_coord := t.int2{x, y}
+
+    ok, chunk_id := get_chunk_by_coord(world, chunk_coord)
+    if !ok
+    {
+        return false
+    }
+
+    section_index := coord.y / SECTION_SIZE
+
+    chunk := &all_chunks[chunk_id]
+    local_coord := coord - t.int3{chunk_coord.x, 0, chunk_coord.y} * SECTION_SIZE
+    local_coord.y = coord.y % SECTION_SIZE
+
+    block_index := local_coord_to_block_index(local_coord)
+    chunk.sections[section_index].blocks[block_index] = block_id
+    
+    return true
+}
+
+set_block_and_get_section :: proc(world: ^World, coord: t.int3, block_id: u16) -> (bool, ^Section) {
+    xf := f32(coord.x) / f32(SECTION_SIZE)
+    yf := f32(coord.z) / f32(SECTION_SIZE)
+
+    x : i32
+    y : i32
+
+    x = i32(math.floor_f32(xf))
+    y = i32(math.floor_f32(yf))
+    chunk_coord := t.int2{x, y}
+
+    ok, chunk_id := get_chunk_by_coord(world, chunk_coord)
+    if !ok
+    {
+        return false, nil
+    }
+
+    section_index := coord.y / SECTION_SIZE
+
+    chunk := &all_chunks[chunk_id]
+    local_coord := coord - t.int3{chunk_coord.x, 0, chunk_coord.y} * SECTION_SIZE
+    local_coord.y = coord.y % SECTION_SIZE
+    section := &chunk.sections[section_index]
+
+    block_index := local_coord_to_block_index(local_coord)
+    section.blocks[block_index] = block_id
+    
+    return true, section
 }
 
 // ===== Pooling

@@ -15,8 +15,7 @@ import "base:runtime"
 import q "core:container/queue"
 import "entity"
 import "physics"
-//import ws "ws_client"
-import ws "ws_client_web"
+import ws "ws"
 
 Arena :: mem.Arena
 
@@ -45,6 +44,7 @@ sunDirectionLocation : i32
 state : GameState
 shader: rl.Shader
 texture: rl.Texture2D
+default_font: rl.Font
 
 version: cstring
 
@@ -73,9 +73,8 @@ Player :: struct {
 	floorAABB: physics.AABB,
 	grounded: bool,
 	last_jump_tick: i64,
+	head_pos: f64,
 }
-
-//ws_client : ^ws.ws_client
 
 custom_context : runtime.Context
 
@@ -97,7 +96,7 @@ on_message :: proc "c" (data: [^]u8, len: i32) {
 on_error :: proc "c" () {
 	context = custom_context
 	log.logf(.Info, "On error")
-	//ws.ws_close(ws_client)
+	ws.ws_close()
 }
 
 cb : ws.ws_callbacks
@@ -114,22 +113,8 @@ start :: proc()
 		on_message = on_message,
 		on_error = on_error,
 	}
-	url :cstring= "wss://echo.websocket.org"
-	ws.ws_connect(url, i32(len(url)),
-		cb, 
-		transmute([^]u8)&on_message_buffer, i32(len(on_message_buffer)),
-		transmute([^]u8)&on_error_buffer, i32(len(on_error_buffer))
-	)
-	
-	/*
-	log.log(.Info, "Trying to connect to the server...")
-	cb.on_open = on_open
-	cb.on_message = on_message
-	cb.on_error = on_error
-	cb.on_close = on_close
-	
-	ws_client = ws.ws_connect("ws://127.0.0.1:1227", cb)
-	*/
+	url :cstring= "ws://127.0.0.1:1227"
+	ws.ws_connect(url, cb)
 	
 	camera.position = {0, 0, 0}
 	camera.target = {0, 0, 0}
@@ -150,6 +135,7 @@ start :: proc()
 	chunk_fs := rl.TextFormat("%v/chunk.frag", shaders_folder)
 
 	shader = rl.LoadShader(chunk_vs, chunk_fs)
+	default_font = rl.LoadFont("assets/fonts/MercutioNbpBasic.ttf");
 
 	sunDirection := [3]f32{1.0, 0.75, 0.8}
 	atlasSize : f32 = 2.0
@@ -161,11 +147,13 @@ start :: proc()
 	world.draw_distance = 3
 	player.position = {0, 32, 0}
 	player.prev_position = {0, 32, 0}
+	player.center = t.float3{0, 0.9, 0}
 	player.extents = t.float3{0.3, 0.9, 0.3}
 	player.floorAABB = physics.AABB {
-		center = {0, -0.8, 0},
-		extents = {0.29, 0.2, 0.29},
+		center = {0, 0, 0},
+		extents = {0.2, 0.1, 0.2},
 	}
+	player.head_pos = 1.7
 }
 
 tick :: proc() {
@@ -316,9 +304,16 @@ draw :: proc() {
 	// -------------------------------
 	// ------ Player colliders visualisation
 	
-	rl.DrawCubeWires(t.double3_to_float3(player.position) + {0, 0, 0}, player.extents.x * 2, player.extents.y * 2, player.extents.z * 2, rl.GREEN)
+	rl.DrawCubeWires(t.double3_to_float3(player.position) + player.center, player.extents.x * 2, player.extents.y * 2, player.extents.z * 2, rl.GREEN)
 	grounded_trigger_color := player.grounded ? rl.BLUE : rl.RED
 	rl.DrawCubeWires(t.double3_to_float3(player.position)  + {0, 0, 0} + player.floorAABB.center, player.floorAABB.extents.x * 2, player.floorAABB.extents.y * 2, player.floorAABB.extents.z * 2, grounded_trigger_color)
+
+	rl.DrawSphere(t.double3_to_float3(player.position), 0.1, rl.RED)
+
+	if raycast_result.hit {
+		rl.DrawCubeWires(t.int3_to_float3(raycast_result.world_pos) + {0.5, 0.5, 0.5}, 1, 1, 1, rl.BLACK)
+		rl.DrawSphere(t.double3_to_float3(raycast_result.pos), 0.1, rl.BLUE)
+	}
 
 	rl.EndMode3D()
 	rl.DrawFPS(10, 10)
@@ -378,7 +373,15 @@ draw :: proc() {
 	rl.DrawLineV(t.float2{10, y30fps}, t.float2{10 + line_width, y30fps}, rl.BLACK)
 	rl.DrawLineV(t.float2{10, y15fps}, t.float2{10 + line_width, y15fps}, rl.BLACK)
 
-	rl.DrawText(fmt.ctprintf("x: %v\ny: %v\nz: %v", camera.position.x, camera.position.y, camera.position.z), width - 100, 28, 18, rl.BLACK)
+	rl.DrawTextEx(default_font,
+		fmt.ctprintf("x: %v\ny: %v\nz: %v", camera.position.x, camera.position.y, camera.position.z),
+		t.float2{
+			f32(width - 100),
+			f32(28),
+		},
+		32,
+		1,
+		rl.BLACK)
 	rl.DrawText(fmt.ctprintf("%v", input), width - 400, 150, 18, rl.BLACK)
 	/*
 	for i in 0..<len(collisions) {
@@ -417,8 +420,8 @@ update :: proc() {
 	frametimes_pos = (frametimes_pos + 1) % len(frametimes)
 
 	if state.lockCursor {
-		camera_rot.x -= rl.GetMouseDelta().x * camera_rot_speed * dt
-		camera_rot.y -= rl.GetMouseDelta().y * camera_rot_speed * dt
+		camera_rot.x -= rl.GetMouseDelta().x * camera_rot_speed
+		camera_rot.y -= rl.GetMouseDelta().y * camera_rot_speed
 
 		if camera_rot.x > 180 {
 			diff := camera_rot.x - 180.0
@@ -434,7 +437,7 @@ update :: proc() {
 	}
 
 	// TODO: proper convert from infinte world f64 coord to rendering f32
-	camera.position = t.double3_to_float3(player.prev_position + (player.position - player.prev_position) * f64(partial_tick)) + t.float3{0, 0.4, 0}
+	camera.position = t.double3_to_float3(player.prev_position + (player.position - player.prev_position) * f64(partial_tick) + player.head_pos * t.double3{0, 1, 0})
 
 	// Camera rotation
 	// ------------------
@@ -515,7 +518,41 @@ update :: proc() {
 	if state.lockCursor {
 		rl.SetMousePosition(rl.GetRenderWidth() / 2, rl.GetRenderHeight() / 2)
 	}
+	
+	dir := t.float3_to_double3(camera.target - camera.position)
+	raycast_result = w.raycast(&world, t.float3_to_double3(camera.position), dir, 5)
+	
+	if !raycast_result.hit { return }
+	
+	if rl.IsMouseButtonDown(.LEFT) {
+		ok, section := w.set_block_and_get_section(&world, raycast_result.world_pos, 0)
+		
+		if !ok { return }
+
+		if section.hasModel
+		{
+			model := section.model
+			rl.UnloadModel(model)
+			section.hasModel = false
+		}
+
+		// -----
+
+		mesh := new(rl.Mesh)
+		ok = rend.get_mesh_for_section(section, &world, mesh)
+
+		section.mesh = mesh
+
+		rl.UploadMesh(mesh, false)
+
+		section.model = rl.LoadModelFromMesh(mesh^)
+		section.hasModel = true
+		section.model.materials[0].shader = shader
+		rl.SetMaterialTexture(&section.model.materials[0], .ALBEDO, texture)
+	}
 }
+
+raycast_result : w.RaycastResult
 
 update_input :: proc() {
 	using input

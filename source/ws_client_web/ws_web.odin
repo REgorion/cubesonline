@@ -1,3 +1,4 @@
+#+build wasm32, wasm64p32
 package ws_client_web
 
 foreign import lib "ws_client"
