@@ -12,7 +12,7 @@ WORLD_HEIGHT     : i32 : 8
 SECTION_SIZE       : i32 : 16
 SECTION_SIZE_CUBED : i32 : SECTION_SIZE * SECTION_SIZE * SECTION_SIZE
 
-chunkId :: u16
+chunkId :: i32
 
 Section :: struct {
     position:   t.int3,
@@ -225,7 +225,7 @@ set_block :: proc(world: ^World, coord: t.int3, block_id: u16) -> bool {
     return true
 }
 
-set_block_and_get_section :: proc(world: ^World, coord: t.int3, block_id: u16) -> (bool, ^Section) {
+set_block_and_get_sections :: proc(world: ^World, coord: t.int3, block_id: u16) -> (bool, []^Section) {
     xf := f32(coord.x) / f32(SECTION_SIZE)
     yf := f32(coord.z) / f32(SECTION_SIZE)
 
@@ -251,8 +251,73 @@ set_block_and_get_section :: proc(world: ^World, coord: t.int3, block_id: u16) -
 
     block_index := local_coord_to_block_index(local_coord)
     section.blocks[block_index] = block_id
+
+    sections := make([dynamic]^Section, 0, 5, context.temp_allocator)
+    sections_hashmap : map[t.int3]struct{}
+    defer delete(sections_hashmap)
     
-    return true, section
+    append(&sections, section)
+    sections_hashmap[section.position] = {}
+    
+    for i in 0..<3 {
+        if local_coord[i] == SECTION_SIZE - 1 {
+            normal := t.int3{0, 0, 0}
+            normal[i] = 1
+            
+            ok, sec := get_section_by_coord(world, section.position + normal)
+            if ok && !(sec.position in sections_hashmap) {
+                append(&sections, sec)
+            }
+
+            for a in 1..<3
+            {
+                index := (i + a) % 3
+                
+                if local_coord[index] == 0 {
+                    normal[index] = -1
+                    ok, sec := get_section_by_coord(world, section.position + normal)
+                    if ok && !(sec.position in sections_hashmap) {
+                        append(&sections, sec)
+                    }
+                } else if local_coord[index] == SECTION_SIZE - 1 {
+                    normal[index] = 1
+                    ok, sec := get_section_by_coord(world, section.position + normal)
+                    if ok && !(sec.position in sections_hashmap) {
+                        append(&sections, sec)
+                    }
+                }
+            }
+        } else if local_coord[i] == 0 {
+            normal := t.int3{0, 0, 0}
+            normal[i] = -1
+
+            ok, sec := get_section_by_coord(world, section.position + normal)
+            if ok && !(sec.position in sections_hashmap) {
+                append(&sections, sec)
+            }
+
+            for a in 1..<3
+            {
+                index := (i + a) % 3
+
+                if local_coord[index] == 0 {
+                    normal[index] = -1
+                    ok, sec := get_section_by_coord(world, section.position + normal)
+                    if ok && !(sec.position in sections_hashmap) {
+                        append(&sections, sec)
+                    }
+                } else if local_coord[index] == SECTION_SIZE - 1 {
+                    normal[index] = 1
+                    ok, sec := get_section_by_coord(world, section.position + normal)
+                    if ok && !(sec.position in sections_hashmap) {
+                        append(&sections, sec)
+                    }
+                }
+            }
+        }   
+    }
+    
+    return true, sections[:]
 }
 
 // ===== Pooling
@@ -328,6 +393,7 @@ update_active_chunks :: proc(world: ^World, allocator: runtime.Allocator) {
         }
     }
     
+    // Array initialization for the first time
     if all_chunks == nil 
     {
         all_chunks = make_dynamic_array_len_cap([dynamic]Chunk, 0, chunks_count, allocator)
@@ -344,7 +410,13 @@ update_active_chunks :: proc(world: ^World, allocator: runtime.Allocator) {
     // REMOVING CHUNKS OUT OF BOUNDS
     
     new_chunks := make([]chunkId, chunks_count)
+    
+    for i in 0..<chunks_count {
+        new_chunks[i] = -1;
+    }
 
+    log.logf(.Info, "required before removing: %v", len(required))
+    
     for i in 0..<len(world.active_chunks) 
     {
         index := world.active_chunks[i]
@@ -361,13 +433,14 @@ update_active_chunks :: proc(world: ^World, allocator: runtime.Allocator) {
             return_chunk_to_pool(chunk.id)
         }
     }
+
+    log.logf(.Info, "required after removing: %v", len(required))
     
     // ADDING NEW CHUNKS
     added : map[chunkId]struct{}
     defer delete(added)
     
-    for pos in required 
-    {
+    for pos in required {
         new_index := chunk_coord_to_index(world, pos)
         if new_index < 0 {continue}
         
@@ -378,8 +451,7 @@ update_active_chunks :: proc(world: ^World, allocator: runtime.Allocator) {
         chunk.position = pos
         
         // GENERATION
-        for i in 0..<SECTION_SIZE_CUBED * WORLD_HEIGHT
-        {
+        for i in 0..<SECTION_SIZE_CUBED * WORLD_HEIGHT {
             section_index := i / SECTION_SIZE_CUBED
             section := &all_chunks[new_chunk_id].sections[section_index]
             
@@ -402,6 +474,7 @@ update_active_chunks :: proc(world: ^World, allocator: runtime.Allocator) {
                 section.blocks[block_index] = 1
             }
         }
+        
         new_chunks[new_index] = chunk.id
         added[chunk.id] = {}
     }
@@ -442,8 +515,8 @@ update_active_chunks :: proc(world: ^World, allocator: runtime.Allocator) {
     
     // SORTING NEWLY ADDED CHUNKS TO UPDATE THEM LATER IN SEQUENCE
 
-    for chunk_id in added
-    {
+    for chunk_id in added {
+        // not implemented yet, simple queue for now
         chunk := all_chunks[chunk_id]
         diff := chunk.position - world.center
         dist := diff.x * diff.x + diff.y * diff.y

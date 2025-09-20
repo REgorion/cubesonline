@@ -108,12 +108,11 @@ overlap_world :: proc(world: ^w.World, pos: t.double3, aabb: AABB) -> (result: W
     return
 }
 
-slide_entity_in_world :: proc(world: ^w.World, entity: ^entity.Entity, entity_aabb: AABB) -> (remaining_slide, slide_normal: t.float3) {
+slide_entity_in_world :: proc(world: ^w.World, entity: ^entity.Entity, entity_aabb: AABB, delta: t.float3) -> (remaining_slide, slide_normal: t.float3) {
     using entity
     
-    delta := entity.velocity * t.TICK_TIME
-
     candidates := make([dynamic]t.int3, 0, 64)
+    defer delete(candidates)
     candidates_count := get_broadphase_blocks(world, entity_aabb, entity.position, delta, &candidates)
     collided := false
 

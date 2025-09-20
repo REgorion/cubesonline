@@ -22,7 +22,7 @@ VertexData :: struct {
 
 // CACHED DATA
 vertices := [24]t.float3 {
-// top
+    // top
     t.float3{0, 1, 0},
     t.float3{0, 1, 1},
     t.float3{1, 1, 1},

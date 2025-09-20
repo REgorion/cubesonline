@@ -151,7 +151,7 @@ start :: proc()
 	player.extents = t.float3{0.3, 0.9, 0.3}
 	player.floorAABB = physics.AABB {
 		center = {0, 0, 0},
-		extents = {0.2, 0.1, 0.2},
+		extents = {0.29, 0.1, 0.29},
 	}
 	player.head_pos = 1.7
 }
@@ -170,27 +170,6 @@ tick :: proc() {
 	delete(physics.block_overlaps)
 	physics.broadphase = make([dynamic]t.int3, 0, 64)
 	physics.block_overlaps = make([dynamic]t.int3, 0, 64)
-
-	if world.draw_distance != world.previous_draw_dist || world.center != world.previous_center
-	{
-		world.previous_draw_dist = world.draw_distance
-		world.previous_center = world.previous_center
-
-		w.update_active_chunks(&world, context.allocator)
-	}
-
-	if tick_n % 300 == 0  && tick_n != 0 {
-		world.center.y += 1
-	}
-
-	tick_n += 1
-
-	if currently_updating == -1 && q.len(w.chunks_to_update) > 0
-	{
-		chunk_id := q.pop_front(&w.chunks_to_update)
-
-		currently_updating = i32(chunk_id)
-	}
 
 	// Player Update
 	forward := camera.target - camera.position
@@ -223,15 +202,10 @@ tick :: proc() {
 		delete(result.block_ids)
 	}
 
-	if input.jump && player.grounded && tick_n - player.last_jump_tick > 10 {
+	if input.jump && player.grounded && tick_n - player.last_jump_tick > 1 {
 		player.velocity += {0, 10, 0}
 		player.grounded = false
 		player.last_jump_tick = tick_n
-	}
-
-	if !player.grounded
-	{
-		player.velocity += {0, physics.GRAVITY * t.TICK_TIME, 0}
 	}
 
 	player.prev_position = player.position
@@ -242,16 +216,41 @@ tick :: proc() {
 	y := math.clamp(player.velocity.y, -50, 50)
 	player.velocity = t.float3{xz.x, y, xz.y}
 	player.velocity *= 0.98
+	
+	delta := player.velocity * t.TICK_TIME;
 
 	for i in 0..<3 {
-		slide, normal = physics.slide_entity_in_world(&world, &player, player.aabb)
+		slide, normal = physics.slide_entity_in_world(&world, &player, player.aabb, delta)
 		if slide == 0 {
 			break
 		} else {
 			log.logf(.Info, "Slide(%v): %v", i, slide)
-			player.velocity += slide * t.TICKRATE
+			delta = slide
 		}
 	}
+	
+	if !player.grounded
+	{
+		player.velocity += {0, physics.GRAVITY * t.TICK_TIME, 0}
+	}
+
+	// world updates should be after the physics update
+	if world.draw_distance != world.previous_draw_dist || world.center != world.previous_center
+	{
+		world.previous_draw_dist = world.draw_distance
+		world.previous_center = world.center
+
+		w.update_active_chunks(&world, context.allocator)
+	}
+
+	if currently_updating == -1 && q.len(w.chunks_to_update) > 0
+	{
+		chunk_id := q.pop_front(&w.chunks_to_update)
+
+		currently_updating = i32(chunk_id)
+	}
+
+	tick_n += 1
 }
 
 draw :: proc() {
@@ -295,23 +294,23 @@ draw :: proc() {
 	// ------ Broadphase visualisation
 	
 	for pos in physics.broadphase {
-		rl.DrawCubeWires(t.int3_to_float3(pos) + t.float3{0.5, 0.5, 0.5}, 1, 1, 1, rl.WHITE)
+		rl.DrawCubeWires(t.int3_to_float3(pos) + t.float3{0.5, 0.5, 0.5}, 1.01, 1.01, 1.01, rl.WHITE)
 	}
 	for pos in physics.block_overlaps {
-		rl.DrawCube(t.int3_to_float3(pos) + t.float3{0.5, 0.5, 0.5}, 1.01, 1.01, 1.01, {255, 0, 0, 128})
+		//rl.DrawCube(t.int3_to_float3(pos) + t.float3{0.5, 0.5, 0.5}, 1.01, 1.01, 1.01, {255, 0, 0, 128})
 	}
 
 	// -------------------------------
 	// ------ Player colliders visualisation
 	
-	rl.DrawCubeWires(t.double3_to_float3(player.position) + player.center, player.extents.x * 2, player.extents.y * 2, player.extents.z * 2, rl.GREEN)
-	grounded_trigger_color := player.grounded ? rl.BLUE : rl.RED
-	rl.DrawCubeWires(t.double3_to_float3(player.position)  + {0, 0, 0} + player.floorAABB.center, player.floorAABB.extents.x * 2, player.floorAABB.extents.y * 2, player.floorAABB.extents.z * 2, grounded_trigger_color)
+	//rl.DrawCubeWires(t.double3_to_float3(player.position) + player.center, player.extents.x * 2, player.extents.y * 2, player.extents.z * 2, rl.GREEN)
+	//grounded_trigger_color := player.grounded ? rl.BLUE : rl.RED
+	//rl.DrawCubeWires(t.double3_to_float3(player.position)  + {0, 0, 0} + player.floorAABB.center, player.floorAABB.extents.x * 2, player.floorAABB.extents.y * 2, player.floorAABB.extents.z * 2, grounded_trigger_color)
 
-	rl.DrawSphere(t.double3_to_float3(player.position), 0.1, rl.RED)
+	//rl.DrawSphere(t.double3_to_float3(player.position), 0.1, rl.RED)
 
 	if raycast_result.hit {
-		rl.DrawCubeWires(t.int3_to_float3(raycast_result.world_pos) + {0.5, 0.5, 0.5}, 1, 1, 1, rl.BLACK)
+		rl.DrawCubeWires(t.int3_to_float3(raycast_result.world_pos) + {0.5, 0.5, 0.5}, 1.001, 1.001, 1.001, rl.BLACK)
 		rl.DrawSphere(t.double3_to_float3(raycast_result.pos), 0.1, rl.BLUE)
 	}
 
@@ -420,8 +419,8 @@ update :: proc() {
 	frametimes_pos = (frametimes_pos + 1) % len(frametimes)
 
 	if state.lockCursor {
-		camera_rot.x -= rl.GetMouseDelta().x * camera_rot_speed
-		camera_rot.y -= rl.GetMouseDelta().y * camera_rot_speed
+		camera_rot.x -= rl.GetMouseDelta().x * camera_rot_speed * 0.01
+		camera_rot.y -= rl.GetMouseDelta().y * camera_rot_speed * 0.01
 
 		if camera_rot.x > 180 {
 			diff := camera_rot.x - 180.0
@@ -524,19 +523,39 @@ update :: proc() {
 	
 	if !raycast_result.hit { return }
 	
-	if rl.IsMouseButtonDown(.LEFT) {
-		ok, section := w.set_block_and_get_section(&world, raycast_result.world_pos, 0)
-		
-		if !ok { return }
+	block_to_place := -1
+	pos_to_place := raycast_result.world_pos
+	
+	if rl.IsMouseButtonPressed(.LEFT) {
+		block_to_place = 0
+	}
 
-		if section.hasModel
-		{
+	if rl.IsMouseButtonPressed(.RIGHT) {
+		block_to_place = 2
+		pos_to_place = raycast_result.world_pos + raycast_result.normal
+	}
+	
+	if block_to_place == -1 { return }
+	
+	pos_to_place_d := t.int3_to_double3(pos_to_place) + {0.5, 0.5, 0.5}
+	block_aabb := physics.AABB {
+		center = 0,
+		extents = t.float3{0.5, 0.5, 0.5},
+	}
+
+	physics.overlap_world(&world, pos_to_place_d, block_aabb)
+	overlaps, _ := physics.get_overlapping(pos_to_place_d, player.position, block_aabb, player.aabb)
+	if overlaps { return }
+	ok, sections := w.set_block_and_get_sections(&world, pos_to_place, u16(block_to_place))
+
+	if !ok { return }
+
+	for section in sections {
+		if section.hasModel {
 			model := section.model
 			rl.UnloadModel(model)
 			section.hasModel = false
 		}
-
-		// -----
 
 		mesh := new(rl.Mesh)
 		ok = rend.get_mesh_for_section(section, &world, mesh)
